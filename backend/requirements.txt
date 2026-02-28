@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+redis
+chromadb
+openai
+tiktoken
+pytest
+aiofiles
+python-multipart
