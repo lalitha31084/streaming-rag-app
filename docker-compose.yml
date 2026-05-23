@@ -1,6 +1,8 @@
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.api
     container_name: streaming-rag-backend
     ports:
       - "8000:8000"
@@ -11,9 +13,10 @@ services:
     restart: always
 
   worker:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
     container_name: streaming-rag-worker
-    command: ["python", "-u", "worker/worker.py"]
     env_file:
       - .env
     depends_on:
