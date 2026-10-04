@@ -48,10 +48,16 @@ def extract_answer_from_context(query: str, chunks: list[str]) -> str:
                     clean = re.sub(r"^[•\-\*]\s*", "", l_str).strip()
                     if clean and clean not in achieve_lines and len(clean) > 10:
                         achieve_lines.append(clean)
-        if achieve_lines:
+        # Deduplicate and discard partial lines cut off at chunk boundaries
+        filtered_lines = []
+        for line in achieve_lines:
+            if not any(line in other for other in achieve_lines if len(other) > len(line) + 5):
+                filtered_lines.append(line)
+
+        if filtered_lines:
             return (
                 "Based on Lalitha's resume, here are her key achievements in competitive programming:\n\n"
-                + "\n".join(f"• {line}" for line in achieve_lines)
+                + "\n".join(f"• {line}" for line in filtered_lines)
             )
 
     # ── 2. Specific Topic: Colon Desktop Application ───────────────────
