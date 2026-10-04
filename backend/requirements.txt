@@ -1,10 +1,13 @@
 fastapi
 uvicorn[standard]
 python-dotenv
-redis
+redis[hiredis]
 chromadb
 openai
 tiktoken
 pytest
+pytest-asyncio
 aiofiles
 python-multipart
+httpx
+pypdf

@@ -5,6 +5,13 @@ __pycache__/
 *.pyd
 .env
 backend/__pycache__/
+.pytest_cache/
+
+# Databases & local stores
+chroma_test_db/
+/data/chroma/
+*.db
+*.sqlite3
 
 # Node
 node_modules/
@@ -12,6 +19,7 @@ frontend/node_modules/
 
 # Vite
 dist/
+frontend/dist/
 
 # OS
 .DS_Store
