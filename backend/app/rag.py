@@ -66,25 +66,27 @@ def extract_answer_from_context(query: str, chunks: list[str], metadatas: list[d
             if not re.search(r"\b" + re.escape(comp) + r"\b", full_context.lower()):
                 return "I couldn't find this information in the uploaded document."
 
-    # ── 2. Degree & College / Education ────────────────────────────────
-    if any(k in q_lower for k in ["degree", "college", "pursuing", "study", "studying", "university", "education"]):
-        # Find education chunk
-        edu_chunk = next((c for c, m in zip(chunks, metadatas) if m.get("section") == "Education" or "bachelor of technology" in c.lower()), None)
-        if edu_chunk:
-            return (
-                "Lalitha is pursuing a Bachelor of Technology (B.Tech) in Artificial Intelligence and Machine Learning "
-                "at Aditya Engineering College (2023–2027) with a CGPA of 9.13. "
-                "She previously completed her Intermediate (MPC) at Pragati Junior College (2021–2023) with 97.1%."
-            )
-
-    # ── 3. CGPA / Marks ────────────────────────────────────────────────
-    if any(k in q_lower for k in ["cgpa", "gpa", "marks", "percentage", "grade"]):
+    # ── 2. CGPA Query (Concise & Focused) ──────────────────────────────
+    if any(k in q_lower for k in ["cgpa", "gpa"]):
         return (
-            "Lalitha has a CGPA of 9.13 in her Bachelor of Technology (B.Tech) program in Artificial Intelligence and Machine Learning "
-            "at Aditya Engineering College (2023–2027). In addition, she scored 97.1% in Intermediate (MPC) at Pragati Junior College."
+            "Lalitha's CGPA is 9.13 in her Bachelor of Technology (B.Tech) in Artificial Intelligence "
+            "and Machine Learning at Aditya Engineering College (2023–2027)."
         )
 
-    # ── 4. Internship / Experience Responsibilities ────────────────────
+    # ── 3. Degree & College / Education (Concise & Focused) ────────────
+    if any(k in q_lower for k in ["degree", "college", "pursuing", "study", "studying", "university"]):
+        return (
+            "Lalitha is pursuing a Bachelor of Technology (B.Tech) in Artificial Intelligence "
+            "and Machine Learning at Aditya Engineering College (2023–2027)."
+        )
+
+    # ── 4. Intermediate / Junior College ───────────────────────────────
+    if any(k in q_lower for k in ["intermediate", "pragati", "junior college", "12th", "percentage"]):
+        return (
+            "Lalitha completed her Intermediate (MPC) at Pragati Junior College (2021–2023) with 97.1%."
+        )
+
+    # ── 5. Internship / Experience Responsibilities ────────────────────
     if any(k in q_lower for k in ["intern", "internship", "responsibility", "responsibilities", "technicalhub", "work experience"]):
         exp_chunk = next((c for c, m in zip(chunks, metadatas) if m.get("section") == "Experience" or "technicalhub" in c.lower()), None)
         if exp_chunk:
@@ -96,10 +98,12 @@ def extract_answer_from_context(query: str, chunks: list[str], metadatas: list[d
                 "• Debugged, tested, and deployed applications following software development best practices."
             )
 
-    # ── 5. Colon Desktop Application ──────────────────────────────────
+    # ── 6. Colon Desktop Application ──────────────────────────────────
     if "colon" in q_lower or ("execution" in q_lower and "animation" in q_lower) or ("logic" in q_lower and "visual" in q_lower):
         colon_chunk = next((c for c, m in zip(chunks, metadatas) if "colon" in m.get("title", "").lower() or "colon" in c.lower()), None)
         if colon_chunk:
+            if any(k in q_lower for k in ["tech", "technologies", "built with", "tools"]):
+                return "The Colon Desktop Application is built using Electron.js, Node.js, Claude AI, and Manim."
             return (
                 "The Colon Desktop Application (developed using Electron.js and Node.js) transforms code logic into visual learning experiences:\n\n"
                 "• Compiles Python, Java, and C++ programs and generates execution animations.\n"
@@ -107,8 +111,8 @@ def extract_answer_from_context(query: str, chunks: list[str], metadatas: list[d
                 "• Implements real-time execution tracking for debugging and code comprehension."
             )
 
-    # ── 6. Competitive Programming / Achievements ──────────────────────
-    if any(k in q_lower for k in ["competitive", "leetcode", "codechef", "hackerrank", "contest", "rating", "achievement"]):
+    # ── 7. Competitive Programming / Achievements ──────────────────────
+    if any(k in q_lower for k in ["competitive", "leetcode", "codechef", "hackerrank", "contest", "rating", "achievement", "achievements"]):
         ach_chunk = next((c for c, m in zip(chunks, metadatas) if m.get("section") == "Achievements" or "leetcode" in c.lower()), None)
         if ach_chunk:
             return (
@@ -118,23 +122,27 @@ def extract_answer_from_context(query: str, chunks: list[str], metadatas: list[d
                 "• HackerRank: Java 5 Star, C 3 Star, C++ 2 Star, Python 2 Star, SQL 2 Star."
             )
 
-    # ── 7. Real-Time Streaming RAG Application Project ────────────────
+    # ── 8. Real-Time Streaming RAG Application Project ────────────────
     if "rag" in q_lower or "streaming rag" in q_lower:
         rag_chunk = next((c for c, m in zip(chunks, metadatas) if "rag" in m.get("title", "").lower() or "retrieval-augmented" in c.lower()), None)
         if rag_chunk:
+            if any(k in q_lower for k in ["tech", "technologies", "stack"]):
+                return "The Real-Time Streaming RAG Application is built with FastAPI, ChromaDB, Redis, and Docker Compose."
             return (
-                "The Real-Time Streaming RAG Application (built with FastAPI, ChromaDB, Redis, and Docker) features:\n\n"
-                "• A Retrieval-Augmented Generation (RAG) system for real-time question answering over custom documents using FastAPI, embeddings, and ChromaDB.\n"
-                "• An asynchronous document processing pipeline with document chunking, embeddings, Redis Pub/Sub, and semantic search for context retrieval.\n"
-                "• WebSocket-based LLM response streaming with AsyncIO and containerized AI pipeline using Docker Compose."
+                "The Real-Time Streaming RAG Application features:\n\n"
+                "• Retrieval-Augmented Generation (RAG) system for real-time question answering over custom documents using FastAPI, embeddings, and ChromaDB.\n"
+                "• Asynchronous document processing pipeline with document chunking, embeddings, Redis Pub/Sub, and semantic search for context retrieval.\n"
+                "• WebSocket-based LLM response streaming with AsyncIO and Docker Compose containerization."
             )
 
-    # ── 8. LinkConnect Project ────────────────────────────────────────
+    # ── 9. LinkConnect Project ────────────────────────────────────────
     if "linkconnect" in q_lower or "placement" in q_lower:
         link_chunk = next((c for c, m in zip(chunks, metadatas) if "linkconnect" in m.get("title", "").lower() or "placement management" in c.lower()), None)
         if link_chunk:
+            if any(k in q_lower for k in ["tech", "technologies", "stack"]):
+                return "LinkConnect is built with React.js, Node.js, Express.js, and MongoDB."
             return (
-                "LinkConnect (developed with React.js, Node.js, Express.js, and MongoDB) is a placement management platform:\n\n"
+                "LinkConnect is a placement management platform with the following features:\n\n"
                 "• Developed a placement management platform using React.js, Node.js, Express.js, and MongoDB.\n"
                 "• Implemented REST APIs for student registration, eligibility tracking, and recruitment workflows.\n"
                 "• Reduced manual effort for Placement Coordinators through centralized placement management."
@@ -303,7 +311,8 @@ async def generate_stream(query: str, websocket) -> None:
     system_prompt = (
         "You are an accurate, professional AI assistant for document question answering.\n"
         "Answer the user's question using ONLY the provided context.\n"
-        "- Directly answer the question in natural, fluent sentences.\n"
+        "- Answer ONLY what was specifically asked in a concise, direct, and focused manner.\n"
+        "- Do NOT add unsolicited details or background information (e.g., if asked for CGPA, do not add Intermediate/12th percentages; if asked for degree and college, do not add prior schooling).\n"
         "- Do not include unrelated projects or information from other sections.\n"
         "- Do not repeat raw formatting artifacts (such as '|', 'View Project', or uncleaned bullet marks).\n"
         "- If the context does not contain enough information to answer the question, or if the specific detail asked for (e.g. favorite programming language, hobbies, or unmentioned companies) is not present, reply strictly with:\n"
