@@ -30,6 +30,7 @@ async def test_add_documents_uses_sha256_ids(mock_collection):
 @patch("app.vectorstore.collection")
 async def test_query_documents(mock_collection):
     """query_documents queries ChromaDB collection asynchronously."""
+    mock_collection.count.return_value = 1
     mock_collection.query.return_value = {
         "documents": [["Test doc"]],
         "metadatas": [[{"source": "test.txt"}]],

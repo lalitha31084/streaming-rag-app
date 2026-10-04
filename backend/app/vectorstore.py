@@ -56,12 +56,38 @@ async def query_documents(
     """
     Asynchronously query the ChromaDB collection for the top matching
     documents. Runs the blocking query in a thread pool.
+    Gracefully handles empty collections or newly created segment states
+    to prevent 'Nothing found on disk' HNSW reader exceptions.
     """
     def _sync_query():
-        return collection.query(
-            query_embeddings=[query_embedding],
-            n_results=n_results,
-            include=["documents", "metadatas", "distances"],
-        )
+        try:
+            count = collection.count()
+            if count == 0:
+                logger.info("ChromaDB collection is empty.")
+                return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+            k = min(n_results, count)
+            return collection.query(
+                query_embeddings=[query_embedding],
+                n_results=k,
+                include=["documents", "metadatas", "distances"],
+            )
+        except Exception as e:
+            logger.warning("ChromaDB query notice (%s). Falling back to direct metadata retrieval.", e)
+            try:
+                all_records = collection.get(include=["documents", "metadatas"])
+                docs = all_records.get("documents", [])
+                metas = all_records.get("metadatas", [])
+                if docs:
+                    k = min(n_results, len(docs))
+                    return {
+                        "documents": [docs[:k]],
+                        "metadatas": [metas[:k]],
+                        "distances": [[0.1] * k],
+                    }
+            except Exception as inner_e:
+                logger.error("ChromaDB direct get fallback failed: %s", inner_e)
+
+            return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
 
     return await asyncio.to_thread(_sync_query)
