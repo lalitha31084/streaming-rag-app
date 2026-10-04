@@ -8,6 +8,7 @@ import logging
 import time
 from .config import settings
 from .rag import generate_stream
+from .ingest import extract_text
 
 # -- Logging --
 logging.basicConfig(
@@ -71,14 +72,15 @@ async def ingest(file: UploadFile = File(...)):
     asynchronously by a separate background worker process.
     """
     content = await file.read()
+    text_content = extract_text(file.filename, content)
     message = json.dumps({
         "filename": file.filename,
-        "content": content.decode("utf-8", errors="ignore"),
+        "content": text_content,
         "timestamp": time.time(),
     })
     # Publish asynchronously - does NOT block the event loop
     await redis_client.publish("ingestion_queue", message)
-    logger.info("Published ingestion task for '%s' to Redis.", file.filename)
+    logger.info("Published ingestion task for '%s' (%d chars) to Redis.", file.filename, len(text_content))
     return {"message": "Document ingestion initiated", "filename": file.filename}
 
 
