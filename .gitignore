@@ -9,6 +9,8 @@ backend/__pycache__/
 
 # Databases & local stores
 chroma_test_db/
+chroma_data/
+backend/chroma_data/
 /data/chroma/
 *.db
 *.sqlite3
