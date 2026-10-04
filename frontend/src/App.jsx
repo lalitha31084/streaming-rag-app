@@ -126,7 +126,10 @@ function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>Real-Time Streaming RAG</h1>
+        <div className="header-title">
+          <h1>Real-Time Streaming RAG</h1>
+          <p className="subtitle">High-precision document retrieval & streaming response synthesis</p>
+        </div>
         <span className={`ws-badge ${wsStatus === "Connected" ? "connected" : "disconnected"}`}>
           {wsStatus}
         </span>
@@ -138,7 +141,7 @@ function App() {
           <div className="input-row">
             <input
               type="text"
-              placeholder="Type your question..."
+              placeholder="e.g., What degree is Lalitha pursuing and at which college?"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -155,48 +158,57 @@ function App() {
 
           <h3>
             Answer
-            {isStreaming && <span className="streaming-dot"> *</span>}
+            {isStreaming && <span className="streaming-dot"> ●</span>}
           </h3>
           <div className="response-box" ref={responseRef}>
             {response || (
-              <span className="placeholder">Response will appear here...</span>
+              <span className="placeholder">Response will stream here in real time...</span>
             )}
           </div>
-          {streamTime && (
-            <p className="meta">Completed in {streamTime}s</p>
+
+          {(streamTime !== null || citations.length > 0) && (
+            <div className="retrieval-summary">
+              <span>Retrieved {citations.length} relevant chunk{citations.length === 1 ? "" : "s"}</span>
+              {streamTime && <span> • Response generated in {streamTime}s</span>}
+            </div>
           )}
 
           {citations.length > 0 && (
-            <>
-              <h3>Sources</h3>
+            <div className="sources-container">
+              <h3>Sources & Citations</h3>
               <ul className="citation-list">
                 {citations.map((c, i) => (
                   <li key={i} className="citation-item">
-                    <strong>{c.source || "Unknown"}</strong>
-                    {c.page !== null && c.page !== undefined && (
-                      <span className="badge">Page {c.page}</span>
-                    )}
-                    {c.relevance_score !== undefined && (
-                      <span className="badge score">
-                        Score: {c.relevance_score}
-                      </span>
-                    )}
+                    <div className="citation-header">
+                      <span className="source-title">📄 {c.source || "Document"}</span>
+                      {c.section && <span className="badge section-badge">{c.section}</span>}
+                      {c.title && c.title !== c.section && (
+                        <span className="badge title-badge">{c.title}</span>
+                      )}
+                      {c.page !== null && c.page !== undefined && (
+                        <span className="badge">Page {c.page}</span>
+                      )}
+                      {c.relevance_score !== undefined && (
+                        <span className="badge score">
+                          Relevance: {Math.round(c.relevance_score * 100)}%
+                        </span>
+                      )}
+                    </div>
                     {c.snippet && (
                       <p className="snippet">"{c.snippet}"</p>
                     )}
                   </li>
                 ))}
               </ul>
-            </>
+            </div>
           )}
         </section>
 
         <section className="panel upload-panel">
           <h2>Ingest Document</h2>
           <p className="hint">
-            Upload a <code>.txt</code> or <code>.pdf</code> file. It will be
-            chunked, embedded, and indexed in the vector database
-            asynchronously.
+            Upload a <code>.txt</code> or <code>.pdf</code> file. It is
+            parsed with section-aware chunking and indexed asynchronously in ChromaDB.
           </p>
           <div className="upload-row">
             <input

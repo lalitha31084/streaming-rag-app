@@ -13,9 +13,17 @@
   padding-bottom: 1rem;
   border-bottom: 2px solid #e5e7eb;
 }
-.app-header h1 {
+
+.header-title h1 {
   margin: 0;
   font-size: 1.6rem;
+  color: #111827;
+}
+
+.header-title .subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.88rem;
+  color: #6b7280;
 }
 
 .ws-badge {
@@ -49,14 +57,17 @@
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 .panel h2 {
   margin-top: 0;
   font-size: 1.2rem;
+  color: #1f2937;
 }
 .panel h3 {
   font-size: 1rem;
   margin-bottom: 0.5rem;
+  color: #374151;
 }
 
 .input-row {
@@ -71,7 +82,7 @@
   border: 1px solid #d1d5db;
   border-radius: 8px;
   outline: none;
-  transition: border 0.2s;
+  transition: border 0.2s, box-shadow 0.2s;
 }
 .input-row input:focus {
   border-color: #6366f1;
@@ -114,13 +125,14 @@
   background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 1rem;
+  padding: 1.1rem;
   min-height: 150px;
-  max-height: 400px;
+  max-height: 420px;
   overflow-y: auto;
   white-space: pre-wrap;
   font-size: 0.95rem;
-  line-height: 1.6;
+  line-height: 1.65;
+  color: #1f2937;
 }
 .placeholder {
   color: #9ca3af;
@@ -128,45 +140,95 @@
 }
 
 .streaming-dot {
-  color: #22c55e;
-  animation: blink 1s infinite;
+  color: #10b981;
+  animation: blink 0.9s infinite;
 }
 @keyframes blink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  50% { opacity: 0.25; }
+}
+
+.retrieval-summary {
+  display: inline-block;
+  margin-top: 0.75rem;
+  padding: 4px 12px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.sources-container {
+  margin-top: 1.5rem;
+  border-top: 1px dashed #e5e7eb;
+  padding-top: 1rem;
 }
 
 .citation-list {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 .citation-item {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 0.5rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.65rem;
+  transition: border-color 0.2s;
 }
-.citation-item strong {
-  font-size: 0.95rem;
+.citation-item:hover {
+  border-color: #cbd5e1;
 }
+
+.citation-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.source-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #1e293b;
+}
+
 .badge {
   display: inline-block;
-  font-size: 0.75rem;
-  padding: 2px 8px;
-  margin-left: 8px;
-  border-radius: 12px;
-  background: #e0e7ff;
-  color: #3730a3;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 500;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+.badge.section-badge {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+.badge.title-badge {
+  background: #fdf2f8;
+  color: #be185d;
+  border-color: #fbcfe8;
 }
 .badge.score {
-  background: #fef3c7;
-  color: #92400e;
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+  font-weight: 600;
 }
+
 .snippet {
-  margin: 0.5rem 0 0;
-  font-size: 0.85rem;
-  color: #6b7280;
+  margin: 0.4rem 0 0;
+  font-size: 0.84rem;
+  color: #64748b;
+  line-height: 1.45;
   font-style: italic;
 }
 
@@ -180,15 +242,12 @@
   font-size: 0.85rem;
   color: #6b7280;
   margin-bottom: 1rem;
+  line-height: 1.4;
 }
 .upload-status {
-  font-size: 0.9rem;
-  padding: 8px;
+  font-size: 0.88rem;
+  padding: 8px 12px;
   border-radius: 6px;
   background: #f3f4f6;
-}
-.meta {
-  font-size: 0.8rem;
-  color: #9ca3af;
-  margin-top: 0.25rem;
+  color: #374151;
 }

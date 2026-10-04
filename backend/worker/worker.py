@@ -5,9 +5,9 @@ Runs as a separate process (distinct container in Docker Compose).
 Subscribes to the Redis Pub/Sub channel 'ingestion_queue' and, for every
 message received:
   1. Parses the JSON payload (filename + text content).
-  2. Chunks the text using a sliding-window strategy.
-  3. Generates embeddings via the async OpenAI API.
-  4. Upserts chunks + embeddings into ChromaDB (idempotent via SHA-256 IDs).
+  2. Chunks the text using section-aware semantic chunking with metadata.
+  3. Generates embeddings via the async OpenAI API (with deterministic fallback).
+  4. Upserts chunks + embeddings + metadata into ChromaDB (idempotent via SHA-256 IDs).
 
 All I/O is non-blocking (async Redis, async OpenAI, asyncio.to_thread
 for ChromaDB).
@@ -16,13 +16,14 @@ for ChromaDB).
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 
 from redis.asyncio import Redis
 from openai import AsyncOpenAI
 
-import os
+# -- The worker shares the app package for config, vectorstore, and ingest --
 current_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.dirname(current_dir)
 if backend_dir not in sys.path:
@@ -32,6 +33,7 @@ if "/app" not in sys.path:
 
 from app.config import settings
 from app.vectorstore import add_documents
+from app.ingest import chunk_text, chunk_document
 
 # -- Logging --
 logging.basicConfig(
@@ -44,46 +46,47 @@ logger = logging.getLogger("worker")
 openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 
-# ---- Chunking ----
-def chunk_text(
-    text: str,
-    chunk_size: int = 800,
-    chunk_overlap: int = 200,
-) -> list[str]:
-    """
-    Split text into overlapping windows of chunk_size characters.
-    Overlap ensures no information is lost at chunk boundaries.
-    """
-    if not text or not text.strip():
-        return []
-
-    chunks: list[str] = []
-    step = max(chunk_size - chunk_overlap, 1)
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end])
-        start += step
-    return chunks
-
-
 # ---- Document processing ----
 async def process_document(filename: str, content: str) -> None:
     """
     End-to-end processing of a single document:
-      chunk -> embed -> store.
+      section-aware chunking -> embedding generation -> vector storage.
     """
     t0 = time.perf_counter()
     logger.info("Processing document: %s (%d chars)", filename, len(content))
 
-    chunks = chunk_text(content)
-    if not chunks:
-        logger.warning("Document '%s' produced 0 chunks - skipping.", filename)
+    if not content or not content.strip():
+        logger.warning("Document '%s' is empty - skipping.", filename)
         return
 
-    logger.info("Chunked '%s' into %d fragments.", filename, len(chunks))
+    # Use section-aware chunker with metadata
+    chunks_data = chunk_document(content, filename=filename)
+    if not chunks_data:
+        # Fallback to standard sliding-window chunker
+        raw_chunks = chunk_text(content)
+        if not raw_chunks:
+            logger.warning("Document '%s' produced 0 chunks - skipping.", filename)
+            return
+        chunks_data = [
+            {
+                "text": c,
+                "metadata": {
+                    "source": filename,
+                    "section": "General",
+                    "title": filename,
+                    "page": i // 3,
+                    "chunk_index": i,
+                },
+            }
+            for i, c in enumerate(raw_chunks)
+        ]
 
-    # Generate embeddings (async, non-blocking with fallback)
+    chunks = [item["text"] for item in chunks_data]
+    metadata_list = [item["metadata"] for item in chunks_data]
+
+    logger.info("Structured '%s' into %d section-aware chunks.", filename, len(chunks))
+
+    # Generate embeddings (async, non-blocking with resilient fallback)
     try:
         embed_response = await openai_client.embeddings.create(
             input=chunks,
@@ -91,9 +94,14 @@ async def process_document(filename: str, content: str) -> None:
         )
         embeddings = [item.embedding for item in embed_response.data]
     except Exception as e:
-        logger.warning("OpenAI embedding API unavailable (%s). Using deterministic fallback embeddings for indexing.", e)
+        logger.warning(
+            "OpenAI embedding API unavailable (%s). Using deterministic fallback embeddings for indexing.",
+            e,
+        )
         # Deterministic 1536-dim normalized embedding based on content hash
-        import hashlib, random
+        import hashlib
+        import random
+
         embeddings = []
         for c in chunks:
             seed = int(hashlib.sha256(c.encode("utf-8")).hexdigest()[:8], 16)
@@ -101,12 +109,6 @@ async def process_document(filename: str, content: str) -> None:
             vec = [rnd.uniform(-1.0, 1.0) for _ in range(1536)]
             norm = sum(x * x for x in vec) ** 0.5 or 1.0
             embeddings.append([x / norm for x in vec])
-
-    # Build per-chunk metadata
-    metadata_list = [
-        {"source": filename, "chunk_index": i, "page": i // 3}
-        for i in range(len(chunks))
-    ]
 
     # Store in ChromaDB (async via to_thread inside add_documents)
     try:

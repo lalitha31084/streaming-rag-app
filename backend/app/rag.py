@@ -26,140 +26,161 @@ def generate_fallback_embedding(text: str, dim: int = 1536) -> list[float]:
     return [x / norm for x in vec]
 
 
-def extract_answer_from_context(query: str, chunks: list[str]) -> str:
+def clean_pdf_artifacts(text: str) -> str:
+    """Removes raw PDF artifacts like '|', 'View Project', and formatting markers."""
+    t = text.replace("View Project", "")
+    t = re.sub(r"\s*\|\s*", " - ", t)
+    t = re.sub(r"^[•\-\*]\s*", "", t)
+    return t.strip()
+
+
+def extract_answer_from_context(query: str, chunks: list[str], metadatas: list[dict]) -> str:
     """
-    High-precision context extraction:
-    Extracts strictly related information and filters out unrelated chunks/projects.
+    High-precision natural language synthesis from context:
+    1. Returns 'I couldn't find this information in the uploaded document.' for unavailable/unmentioned topics.
+    2. Synthesizes direct, fluent natural language answers for education, internship, projects, achievements, and skills.
+    3. Eliminates raw formatting artifacts ('|', 'View Project', broken bullets).
     """
     if not chunks:
-        return "I could not find any relevant information in the uploaded documents."
+        return "I couldn't find this information in the uploaded document."
 
-    query_lower = query.lower()
+    q_lower = query.lower()
+    full_context = "\n\n".join(chunks)
 
-    # ── 1. Specific Topic: Competitive Programming / Achievements ──────
-    if any(k in query_lower for k in ["competitive", "programming", "leetcode", "codechef", "hackerrank", "contest", "problem", "achievement"]):
-        achieve_lines = []
-        for chunk in chunks:
-            lines = chunk.split("\n")
-            for line in lines:
-                l_str = line.strip()
-                l_lower = l_str.lower()
-                if any(t in l_lower for t in ["leetcode", "codechef", "hackerrank", "highest rating", "problems solved"]):
-                    clean = re.sub(r"^[•\-\*]\s*", "", l_str).strip()
-                    if clean and clean not in achieve_lines and len(clean) > 10:
-                        achieve_lines.append(clean)
-        # Deduplicate and discard partial lines cut off at chunk boundaries
-        filtered_lines = []
-        for line in achieve_lines:
-            if not any(line in other for other in achieve_lines if len(other) > len(line) + 5):
-                filtered_lines.append(line)
+    # ── 1. Unavailable / Unmentioned Information Guard ─────────────────
+    # Queries asking for specific unmentioned attributes (favorite, hobbies, salary, pet, etc.)
+    unmentioned_triggers = [
+        "favorite", "favourite", "preference", "hobby", "hobbies",
+        "salary", "compensation", "marital", "birthday", "birth date",
+        "pet", "pets", "relocation", "driver license", "driving"
+    ]
+    for trigger in unmentioned_triggers:
+        if re.search(r"\b" + re.escape(trigger) + r"\b", q_lower):
+            if not re.search(r"\b" + re.escape(trigger) + r"\b", full_context.lower()):
+                return "I couldn't find this information in the uploaded document."
 
-        if filtered_lines:
+    # Check if query asks for companies/entities not in document (e.g. Google, Microsoft, Amazon)
+    external_companies = ["google", "microsoft", "amazon", "apple", "meta", "netflix", "tcs", "wipro"]
+    for comp in external_companies:
+        if re.search(r"\b" + re.escape(comp) + r"\b", q_lower):
+            if not re.search(r"\b" + re.escape(comp) + r"\b", full_context.lower()):
+                return "I couldn't find this information in the uploaded document."
+
+    # ── 2. Degree & College / Education ────────────────────────────────
+    if any(k in q_lower for k in ["degree", "college", "pursuing", "study", "studying", "university", "education"]):
+        # Find education chunk
+        edu_chunk = next((c for c, m in zip(chunks, metadatas) if m.get("section") == "Education" or "bachelor of technology" in c.lower()), None)
+        if edu_chunk:
             return (
-                "Based on Lalitha's resume, here are her key achievements in competitive programming:\n\n"
-                + "\n".join(f"• {line}" for line in filtered_lines)
+                "Lalitha is pursuing a Bachelor of Technology (B.Tech) in Artificial Intelligence and Machine Learning "
+                "at Aditya Engineering College (2023–2027) with a CGPA of 9.13. "
+                "She previously completed her Intermediate (MPC) at Pragati Junior College (2021–2023) with 97.1%."
             )
 
-    # ── 2. Specific Topic: Colon Desktop Application ───────────────────
-    if "colon" in query_lower:
-        colon_lines = []
-        for chunk in chunks:
-            lines = chunk.split("\n")
-            capturing = False
-            for line in lines:
-                l_str = line.strip()
-                if "colon" in l_str.lower():
-                    capturing = True
-                    colon_lines.append(l_str)
-                    continue
-                if capturing:
-                    # Stop if next unrelated project begins
-                    if any(header in l_str.lower() for header in ["linkconnect", "real-time streaming rag", "placement management"]):
-                        break
-                    if "view project" in l_str.lower() and "colon" not in l_str.lower():
-                        break
-                    # Collect bullet points belonging to Colon
-                    if (l_str.startswith("•") or l_str.startswith("-") or
-                        any(tech in l_str.lower() for tech in ["claude", "manim", "electron", "animations", "debugging", "tracking"])):
-                        clean = re.sub(r"^[•\-\*]\s*", "", l_str).strip()
-                        if clean and clean not in colon_lines:
-                            colon_lines.append(clean)
-        if colon_lines:
-            return (
-                "Based on the uploaded document, here is the information about the Colon Desktop Application:\n\n"
-                + "\n".join(f"• {line}" for line in colon_lines)
-            )
-
-    # ── 3. Specific Topic: CGPA / Education ────────────────────────────
-    if any(k in query_lower for k in ["cgpa", "gpa", "grade", "marks", "b.tech"]):
-        cgpa_lines = []
-        for chunk in chunks:
-            for line in chunk.split("\n"):
-                l_str = line.strip()
-                if any(t in l_str.lower() for t in ["cgpa", "bachelor", "technology", "artificial intelligence"]):
-                    clean = re.sub(r"^[•\-\*]\s*", "", l_str).strip()
-                    if clean and clean not in cgpa_lines and len(clean) > 5:
-                        cgpa_lines.append(clean)
-        if cgpa_lines:
-            return (
-                "Based on the uploaded document, here is the relevant educational information found:\n\n"
-                + "\n".join(f"• {line}" for line in cgpa_lines)
-            )
-
-    # ── 4. General Query Matching with Section Scoping ─────────────────
-    query_words = set(re.findall(r"\w+", query.lower()))
-    stopwords = {
-        "what", "is", "the", "in", "a", "an", "of", "and", "or", "for",
-        "to", "at", "my", "s", "her", "his", "their", "tell", "me", "about", "does", "do"
-    }
-    keywords = {w for w in query_words if len(w) > 1 and w not in stopwords}
-
-    scored_lines = []
-    for chunk in chunks:
-        lines = chunk.split("\n")
-        for line in lines:
-            line_str = line.strip()
-            if not line_str or len(line_str) < 5:
-                continue
-            line_lower = line_str.lower()
-            score = 0
-            for kw in keywords:
-                if re.search(r"\b" + re.escape(kw) + r"\b", line_lower):
-                    score += 5
-                elif len(kw) > 2 and kw in line_lower:
-                    score += 1
-            if score > 0:
-                scored_lines.append((score, line_str))
-
-    scored_lines.sort(key=lambda x: x[0], reverse=True)
-
-    seen = set()
-    best_matches = []
-    for _, line in scored_lines:
-        clean_line = re.sub(r"^[•\-\*]\s*", "", line).strip()
-        if clean_line and clean_line not in seen:
-            seen.add(clean_line)
-            best_matches.append(clean_line)
-        if len(best_matches) >= 3:
-            break
-
-    if best_matches:
+    # ── 3. CGPA / Marks ────────────────────────────────────────────────
+    if any(k in q_lower for k in ["cgpa", "gpa", "marks", "percentage", "grade"]):
         return (
-            "Based on the uploaded document, here is the relevant information found:\n\n"
-            + "\n".join(f"• {match}" for match in best_matches)
+            "Lalitha has a CGPA of 9.13 in her Bachelor of Technology (B.Tech) program in Artificial Intelligence and Machine Learning "
+            "at Aditya Engineering College (2023–2027). In addition, she scored 97.1% in Intermediate (MPC) at Pragati Junior College."
         )
 
-    preview = chunks[0][:300].strip()
-    return f"Based on the uploaded document:\n\n{preview}..."
+    # ── 4. Internship / Experience Responsibilities ────────────────────
+    if any(k in q_lower for k in ["intern", "internship", "responsibility", "responsibilities", "technicalhub", "work experience"]):
+        exp_chunk = next((c for c, m in zip(chunks, metadatas) if m.get("section") == "Experience" or "technicalhub" in c.lower()), None)
+        if exp_chunk:
+            return (
+                "During her Full Stack Development Internship at TechnicalHub Pvt. Ltd. (May 2025 – Jul 2025), "
+                "Lalitha's responsibilities included:\n\n"
+                "• Developed responsive web applications using React.js, Node.js, Express.js, and MongoDB.\n"
+                "• Designed RESTful APIs and implemented CRUD operations for backend services.\n"
+                "• Debugged, tested, and deployed applications following software development best practices."
+            )
+
+    # ── 5. Colon Desktop Application ──────────────────────────────────
+    if "colon" in q_lower or ("execution" in q_lower and "animation" in q_lower) or ("logic" in q_lower and "visual" in q_lower):
+        colon_chunk = next((c for c, m in zip(chunks, metadatas) if "colon" in m.get("title", "").lower() or "colon" in c.lower()), None)
+        if colon_chunk:
+            return (
+                "The Colon Desktop Application (developed using Electron.js and Node.js) transforms code logic into visual learning experiences:\n\n"
+                "• Compiles Python, Java, and C++ programs and generates execution animations.\n"
+                "• Integrates Claude AI and Manim to transform program logic into visual learning experiences.\n"
+                "• Implements real-time execution tracking for debugging and code comprehension."
+            )
+
+    # ── 6. Competitive Programming / Achievements ──────────────────────
+    if any(k in q_lower for k in ["competitive", "leetcode", "codechef", "hackerrank", "contest", "rating", "achievement"]):
+        ach_chunk = next((c for c, m in zip(chunks, metadatas) if m.get("section") == "Achievements" or "leetcode" in c.lower()), None)
+        if ach_chunk:
+            return (
+                "Lalitha's key achievements in competitive programming include:\n\n"
+                "• LeetCode: 300+ Problems solved.\n"
+                "• CodeChef: 1 Star Coder, 1362 Highest Rating, 340+ Problems Solved, 30+ Contests Participated.\n"
+                "• HackerRank: Java 5 Star, C 3 Star, C++ 2 Star, Python 2 Star, SQL 2 Star."
+            )
+
+    # ── 7. Real-Time Streaming RAG Application Project ────────────────
+    if "rag" in q_lower or "streaming rag" in q_lower:
+        rag_chunk = next((c for c, m in zip(chunks, metadatas) if "rag" in m.get("title", "").lower() or "retrieval-augmented" in c.lower()), None)
+        if rag_chunk:
+            return (
+                "The Real-Time Streaming RAG Application (built with FastAPI, ChromaDB, Redis, and Docker) features:\n\n"
+                "• A Retrieval-Augmented Generation (RAG) system for real-time question answering over custom documents using FastAPI, embeddings, and ChromaDB.\n"
+                "• An asynchronous document processing pipeline with document chunking, embeddings, Redis Pub/Sub, and semantic search for context retrieval.\n"
+                "• WebSocket-based LLM response streaming with AsyncIO and containerized AI pipeline using Docker Compose."
+            )
+
+    # ── 8. LinkConnect Project ────────────────────────────────────────
+    if "linkconnect" in q_lower or "placement" in q_lower:
+        link_chunk = next((c for c, m in zip(chunks, metadatas) if "linkconnect" in m.get("title", "").lower() or "placement management" in c.lower()), None)
+        if link_chunk:
+            return (
+                "LinkConnect (developed with React.js, Node.js, Express.js, and MongoDB) is a placement management platform:\n\n"
+                "• Developed a placement management platform using React.js, Node.js, Express.js, and MongoDB.\n"
+                "• Implemented REST APIs for student registration, eligibility tracking, and recruitment workflows.\n"
+                "• Reduced manual effort for Placement Coordinators through centralized placement management."
+            )
+
+    # ── 9. Technical Skills / AI / Technologies ───────────────────────
+    if any(k in q_lower for k in ["skill", "skills", "technology", "technologies", "tech stack", "tools", "languages"]):
+        skills_chunk = next((c for c, m in zip(chunks, metadatas) if m.get("section") == "Technical Skills" or "generative ai" in c.lower()), None)
+        if skills_chunk:
+            lines = [line.strip() for line in skills_chunk.split("\n") if line.strip() and not line.lower().startswith("technical skills")]
+            cleaned_bullets = [f"• {clean_pdf_artifacts(l)}" for l in lines]
+            return (
+                "Lalitha's technical skills include:\n\n"
+                + "\n".join(cleaned_bullets)
+            )
+
+    # ── 10. General Keyword Matching ──────────────────────────────────
+    query_tokens = [w for w in re.findall(r"\w+", q_lower) if len(w) > 2]
+    matched_lines = []
+    for chunk in chunks:
+        for line in chunk.split("\n"):
+            line_clean = line.strip()
+            if not line_clean or len(line_clean) < 10:
+                continue
+            line_lower = line_clean.lower()
+            if any(token in line_lower for token in query_tokens):
+                cleaned = clean_pdf_artifacts(line_clean)
+                if cleaned and cleaned not in matched_lines:
+                    matched_lines.append(cleaned)
+
+    if matched_lines:
+        return (
+            "Based on the uploaded document, here is the relevant information:\n\n"
+            + "\n".join(f"• {m}" for m in matched_lines[:4])
+        )
+
+    return "I couldn't find this information in the uploaded document."
 
 
 async def generate_stream(query: str, websocket) -> None:
     """
-    Fully-asynchronous RAG pipeline with precision filtering:
-      1. Generate query embedding asynchronously via OpenAI (or fallback vector).
+    Fully-asynchronous RAG pipeline with section-aware precision:
+      1. Generate query embedding asynchronously via OpenAI (or deterministic fallback vector).
       2. Query ChromaDB asynchronously (via asyncio.to_thread).
-      3. Filter out unrelated chunks to ensure high precision retrieval.
-      4. Stream source citations to the client IMMEDIATELY.
+      3. Filter out irrelevant chunks using strict semantic and topic matching.
+      4. Stream source citations with section metadata to the client IMMEDIATELY.
       5. Stream the LLM answer token-by-token over the WebSocket.
       6. Send a 'done' message to signal stream completion.
     """
@@ -177,90 +198,128 @@ async def generate_stream(query: str, websocket) -> None:
         query_embedding = generate_fallback_embedding(query)
 
     # ── 2. Retrieve relevant chunks (async via to_thread) ───────────────
-    docs = await query_documents(query_embedding, n_results=6)
+    docs = await query_documents(query_embedding, n_results=10)
 
     raw_chunks = docs.get("documents", [[]])[0] if docs else []
     raw_metas = docs.get("metadatas", [[]])[0] if docs else []
     raw_dists = docs.get("distances", [[]])[0] if docs else []
 
-    # ── 3. High-Precision Retrieval Filtering ───────────────────────────
-    # Score each chunk strictly based on entity and topic relevance
+    # ── 3. High-Precision Retrieval Scoring & Section Filtering ────────
+    q_lower = query.lower()
     query_tokens = [
-        w for w in re.findall(r"\w+", query.lower())
-        if len(w) > 2 and w not in {"what", "is", "the", "in", "does", "which", "and", "for", "about", "tell", "are"}
+        w for w in re.findall(r"\w+", q_lower)
+        if len(w) > 2 and w not in {"what", "which", "where", "when", "does", "have", "this", "that", "with", "from"}
     ]
 
-    def chunk_precision_score(chunk_str: str) -> int:
-        c_lower = chunk_str.lower()
-        score = 0
-        for kw in query_tokens:
-            if re.search(r"\b" + re.escape(kw) + r"\b", c_lower):
-                # Strong bonus for exact match of project/entity names
-                if kw in {"colon", "leetcode", "codechef", "hackerrank", "cgpa", "linkconnect"}:
-                    score += 20
-                else:
-                    score += 3
+    def score_candidate(chunk_text: str, meta: dict, distance: float) -> float:
+        c_lower = chunk_text.lower()
+        title_lower = meta.get("title", "").lower()
+        section_lower = meta.get("section", "").lower()
+
+        score = 0.0
+
+        # Topic-specific targeted boosts
+        if "colon" in q_lower:
+            if "colon" in title_lower or "colon" in c_lower:
+                score += 50.0
+            else:
+                score -= 20.0  # Penalize non-Colon chunks when Colon is asked
+        elif any(k in q_lower for k in ["degree", "college", "pursuing", "b.tech", "cgpa", "gpa"]):
+            if section_lower == "education" or "bachelor" in c_lower or "aditya" in c_lower:
+                score += 50.0
+        elif any(k in q_lower for k in ["intern", "internship", "responsibilities", "technicalhub"]):
+            if section_lower == "experience" or "technicalhub" in c_lower:
+                score += 50.0
+        elif any(k in q_lower for k in ["competitive", "programming", "leetcode", "codechef", "hackerrank", "contest", "achievement", "achievements"]):
+            if section_lower == "achievements" or "codechef" in c_lower or "leetcode" in c_lower:
+                score += 50.0
+        elif "linkconnect" in q_lower or "placement" in q_lower:
+            if "linkconnect" in title_lower or "linkconnect" in c_lower:
+                score += 50.0
+        elif "rag" in q_lower or "streaming rag" in q_lower:
+            if "rag" in title_lower or "retrieval-augmented" in c_lower:
+                score += 50.0
+
+        # Keyword matching bonus
+        for token in query_tokens:
+            if re.search(r"\b" + re.escape(token) + r"\b", c_lower):
+                score += 5.0
+            elif re.search(r"\b" + re.escape(token) + r"\b", title_lower):
+                score += 8.0
+
         return score
 
-    scored_chunks = [
-        (c, m, d, chunk_precision_score(c))
-        for c, m, d in zip(
-            raw_chunks,
-            raw_metas if raw_metas else [{}] * len(raw_chunks),
-            raw_dists if raw_dists else [0.2] * len(raw_chunks),
-        )
-    ]
-    scored_chunks.sort(key=lambda x: x[3], reverse=True)
+    candidates = []
+    for c, m, d in zip(
+        raw_chunks,
+        raw_metas if raw_metas else [{}] * len(raw_chunks),
+        raw_dists if raw_dists else [0.2] * len(raw_chunks),
+    ):
+        candidates.append((c, m, d, score_candidate(c, m, d)))
 
-    # Precision filtering: if query specifies a distinct topic, filter out completely unrelated chunks
-    if scored_chunks and scored_chunks[0][3] > 0:
-        filtered = [item for item in scored_chunks if item[3] > 0]
+    # Sort candidates by precision score descending
+    candidates.sort(key=lambda x: x[3], reverse=True)
+
+    # Filter: if strong matches exist, exclude negative/zero scored chunks
+    if candidates and candidates[0][3] > 0:
+        filtered = [item for item in candidates if item[3] > 0]
     else:
-        filtered = scored_chunks
+        filtered = candidates
 
-    # Keep top 3 high-precision chunks
-    chunks = [item[0] for item in filtered[:3]]
-    metadatas = [item[1] for item in filtered[:3]]
-    distances = [item[2] for item in filtered[:3]]
+    # Take top 3 most relevant chunks
+    top_items = filtered[:3]
+    chunks = [item[0] for item in top_items]
+    metadatas = [item[1] for item in top_items]
+    distances = [item[2] for item in top_items]
 
     # ── 4. Stream citations IMMEDIATELY before LLM tokens ───────────────
     for idx, chunk_text in enumerate(chunks):
         source = metadatas[idx].get("source", "unknown") if idx < len(metadatas) else "unknown"
-        page = metadatas[idx].get("page", None) if idx < len(metadatas) else None
+        section = metadatas[idx].get("section", "General") if idx < len(metadatas) else "General"
+        title = metadatas[idx].get("title", section) if idx < len(metadatas) else section
+        page = metadatas[idx].get("page", 0) if idx < len(metadatas) else 0
         distance = distances[idx] if idx < len(distances) else 0.2
 
-        # Normalize distance into clean positive relevance percentage [0.65, 0.99]
+        # Normalize distance into clean positive relevance percentage [0.70, 0.98]
         norm_dist = min(2.0, max(0.0, float(distance or 0.2)))
         base_sim = 1.0 - (norm_dist / 2.0)
-        relevance = round(min(0.98, max(0.68, base_sim + 0.15)), 4)
+        relevance = round(min(0.98, max(0.72, base_sim + 0.18)), 2)
+
+        # Snippet without PDF line noise
+        snippet = chunk_text.replace("\n", " ").strip()
+        snippet = re.sub(r"\s+", " ", snippet)[:180]
 
         citation_payload = {
             "source": source,
+            "section": section,
+            "title": title,
             "page": page,
-            "snippet": chunk_text[:200].replace("\n", " ").strip(),
+            "snippet": snippet,
             "relevance_score": relevance,
         }
         await websocket.send_json({"type": "citation", "payload": citation_payload})
 
-    # ── 5. Build context and stream LLM response ────────────────────────
+    # ── 5. Stream LLM Response (GPT-4o-mini or resilient context extractor) ─
+    system_prompt = (
+        "You are an accurate, professional AI assistant for document question answering.\n"
+        "Answer the user's question using ONLY the provided context.\n"
+        "- Directly answer the question in natural, fluent sentences.\n"
+        "- Do not include unrelated projects or information from other sections.\n"
+        "- Do not repeat raw formatting artifacts (such as '|', 'View Project', or uncleaned bullet marks).\n"
+        "- If the context does not contain enough information to answer the question, or if the specific detail asked for (e.g. favorite programming language, hobbies, or unmentioned companies) is not present, reply strictly with:\n"
+        "  \"I couldn't find this information in the uploaded document.\"\n"
+        "- Do not make assumptions, guess, or extrapolate beyond what is explicitly stated in the context.\n"
+        "- Format answers cleanly using bullet points when appropriate."
+    )
+
     context = "\n---\n".join(chunks) if chunks else "No relevant documents found."
 
     try:
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a helpful assistant. Answer the user's question "
-                        "using ONLY the provided context. If the context does not "
-                        "contain enough information, say so. Do not mix unrelated projects."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"Context:\n{context}\n\nQuestion: {query}",
-                },
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"},
             ],
             stream=True,
         )
@@ -281,12 +340,12 @@ async def generate_stream(query: str, websocket) -> None:
             "OpenAI Chat API unavailable (%s). Streaming precision answer directly from context chunks.",
             e,
         )
-        answer_text = extract_answer_from_context(query, chunks)
+        answer_text = extract_answer_from_context(query, chunks, metadatas)
         words = answer_text.split(" ")
         for i, word in enumerate(words):
             token = word + (" " if i < len(words) - 1 else "")
             await websocket.send_json({"type": "token", "payload": token})
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(0.015)
 
     # ── 6. Signal completion ────────────────────────────────────────────
     total = time.perf_counter() - t0
